@@ -5,5 +5,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
 
 include_directories(BEFORE SYSTEM ../include)
 
-set(SOURCE_FILES main.c)
-add_executable(array ${SOURCE_FILES})
+set(SERVER_SOURCE_FILES server.c)
+add_executable(serwer ${SERVER_SOURCE_FILES})
+
+set(CLIENT_SOURCE_FILES client.c)
+add_executable(klient ${CLIENT_SOURCE_FILES})
