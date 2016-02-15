@@ -12,7 +12,9 @@
 #include "err.h"
 #include "mesg.h"
 
-int control_queue, clients_queue;
+int control_queue, clients_server_queue, server_clients_queue;
+
+int *array;
 
 int create_queue(key_t key) {
     int id = msgget(key, 0666 | IPC_CREAT | IPC_EXCL);
@@ -22,6 +24,12 @@ int create_queue(key_t key) {
     }
 
     return id;
+}
+
+void queue_send(int id, void *msg, size_t msg_size) {
+    if (msgsnd(id, msg, msg_size, 0) != 0) {
+        syserr("Cannot send to queue");
+    }
 }
 
 void queue_receive(int id, void *msg, size_t msg_size, long type) {
@@ -36,22 +44,31 @@ void remove_queue(int id) {
     }
 }
 
-void exit_server(int sig) {
-    remove_queue(control_queue);
-    remove_queue(clients_queue);
-
-    exit(0);
-}
-
 void *worker(void *pid) {
     long client_pid = *((long *) pid);
     free(pid);
 
     debug("Worker for client with pid %ld created.\n", client_pid);
 
-    Mesg mesg;
+    Mesg request, response;
+    response.mesg_type = client_pid;
     while (true) {
-        queue_receive(clients_queue, &mesg, mesg_size(), client_pid);
+        queue_receive(clients_server_queue, &request, mesg_size(), client_pid);
+
+        if (request.op == QUIT) {
+            debug("Worker for client with pid %ld quitting.\n", client_pid);
+            return 0;
+        }
+
+        if (request.op == READ) {
+            response.args[0] = array[request.args[0]];
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
+
+        if (request.op == WRITE) {
+            array[request.args[0]] = request.args[1];
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
     }
 
     return 0;
@@ -73,6 +90,14 @@ void create_worker(pid_t pid) {
     }
 }
 
+void exit_server(int sig) {
+    remove_queue(control_queue);
+    remove_queue(clients_server_queue);
+    remove_queue(server_clients_queue);
+
+    exit(0);
+}
+
 int main(int argc, char *argv[]) {
     assert(argc == 2);
 
@@ -86,8 +111,13 @@ int main(int argc, char *argv[]) {
         syserr("signal");
     }
 
+    if ((array = calloc(n, sizeof(int))) == NULL) {
+        fatal("Cannot allocate memory.\n");
+    }
+
     control_queue = create_queue(CONTROL_KEY);
-    clients_queue = create_queue(CLIENTS_KEY);
+    clients_server_queue = create_queue(CLIENTS_SERVER_KEY);
+    server_clients_queue = create_queue(SERVER_CLIENTS_KEY);
 
     Mesg mesg;
     while (true) {
