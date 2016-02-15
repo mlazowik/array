@@ -2,6 +2,12 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#include "err.h"
+
 int main(int argc, char *argv[]) {
     assert(argc == 2);
 
@@ -9,7 +15,7 @@ int main(int argc, char *argv[]) {
 
     assert(op_time >= 0);
 
-    printf("Hello client! Got %ld\n", op_time);
+    debug("Hello client! Got %ld\n", op_time);
 
     return 0;
 }
