@@ -12,7 +12,7 @@
 
 int control_queue, clients_server_queue, server_clients_queue;
 
-long pid;
+long pid, op_time;
 
 int get_queue(key_t key) {
     int id;
@@ -79,10 +79,68 @@ void op_write(const char *p) {
     printf("w %d %d\n", request.args[0], request.args[1]);
 }
 
+void op_sum(const char *p) {
+    Mesg request, response;
+
+    request.mesg_type = pid;
+    request.op = SUM_GET;
+
+    read_args(p, &request);
+
+    queue_send(clients_server_queue, (char *) &request, mesg_size());
+
+    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+
+    sleep(op_time);
+
+    request.op = SUM_SET;
+
+    int sum = 0;
+    size_t i;
+    for (i = 1; i < request.args_count; i++) {
+        sum += response.args[i];
+    }
+
+    request.args[request.args_count++] = sum;
+
+    queue_send(clients_server_queue, (char *) &request, mesg_size());
+
+    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+
+    printf("s %d", request.args[0]);
+    for (i = 1; i < request.args_count; i++) {
+        printf(" %d", request.args[i]);
+    }
+    printf("\n");
+}
+
+void op_swap(const char *p) {
+    Mesg request, response;
+
+    request.mesg_type = pid;
+    request.op = SWAP_GET;
+
+    read_args(p, &request);
+
+    queue_send(clients_server_queue, (char *) &request, mesg_size());
+
+    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+
+    sleep(op_time);
+
+    request.op = SWAP_SET;
+
+    queue_send(clients_server_queue, (char *) &request, mesg_size());
+
+    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+
+    printf("x %d %d\n", request.args[0], request.args[1]);
+}
+
 int main(int argc, char *argv[]) {
     assert(argc == 2);
 
-    long int op_time = strtol(argv[1], NULL, 10);
+    op_time = strtol(argv[1], NULL, 10);
 
     assert(op_time >= 0);
 
@@ -113,6 +171,8 @@ int main(int argc, char *argv[]) {
         switch (op) {
             case 'r': op_read(p); break;
             case 'w': op_write(p); break;
+            case 's': op_sum(p); break;
+            case 'x': op_swap(p); break;
         }
     }
 

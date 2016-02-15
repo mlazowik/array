@@ -69,6 +69,30 @@ void *worker(void *pid) {
             array[request.args[0]] = request.args[1];
             queue_send(server_clients_queue, (char *) &response, mesg_size());
         }
+
+        if (request.op == SUM_GET) {
+            size_t i;
+            for (i = 1; i < request.args_count; i++) {
+                response.args[i] = array[request.args[i]];
+            }
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
+
+        if (request.op == SUM_SET) {
+            array[request.args[0]] = request.args[request.args_count - 1];
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
+
+        if (request.op == SWAP_GET) {
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
+
+        if (request.op == SWAP_SET) {
+            int tmp = array[request.args[0]];
+            array[request.args[0]] = array[request.args[1]];
+            array[request.args[1]] = tmp;
+            queue_send(server_clients_queue, (char *) &response, mesg_size());
+        }
     }
 
     return 0;
