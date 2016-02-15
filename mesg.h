@@ -10,4 +10,8 @@ typedef struct {
 
 #define	MKEY	1234L
 
+size_t mesg_size() {
+    return sizeof(Mesg) - sizeof(long);
+}
+
 #endif //ARRAY_MESG_H
