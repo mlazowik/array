@@ -26,14 +26,14 @@ int get_queue(key_t key) {
     return id;
 }
 
-void queue_send(int id, void *msg, size_t msg_size) {
-    if (msgsnd(id, msg, msg_size, 0) != 0) {
+void queue_send(int id, void *msg) {
+    if (msgsnd(id, msg, mesg_size(), 0) != 0) {
         syserr("Cannot send to queue");
     }
 }
 
-void queue_receive(int id, void *msg, size_t msg_size, long type) {
-    if (msgrcv(id, msg, msg_size, type, 0) <= 0) {
+void queue_receive(int id, void *msg, long type) {
+    if (msgrcv(id, msg, mesg_size(), type, 0) <= 0) {
         syserr("Cannot receive from queue");
     }
 }
@@ -49,6 +49,11 @@ void read_args(const char *p, Mesg *msg) {
     msg->args_count = count;
 }
 
+void send_request(Mesg *request, Mesg *response) {
+    queue_send(clients_server_queue, (char *) request);
+    queue_receive(server_clients_queue, (char *) response, pid);
+}
+
 void op_read(const char *p) {
     Mesg request, response;
 
@@ -57,9 +62,7 @@ void op_read(const char *p) {
 
     read_args(p, &request);
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     printf("r %d %d\n", request.args[0], response.args[0]);
 }
@@ -72,9 +75,7 @@ void op_write(const char *p) {
 
     read_args(p, &request);
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     printf("w %d %d\n", request.args[0], request.args[1]);
 }
@@ -87,9 +88,7 @@ void op_sum(const char *p) {
 
     read_args(p, &request);
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     sleep(op_time);
 
@@ -103,9 +102,7 @@ void op_sum(const char *p) {
 
     request.args[request.args_count++] = sum;
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     printf("s %d", request.args[0]);
     for (i = 1; i < request.args_count; i++) {
@@ -122,17 +119,13 @@ void op_swap(const char *p) {
 
     read_args(p, &request);
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     sleep(op_time);
 
     request.op = SWAP_SET;
 
-    queue_send(clients_server_queue, (char *) &request, mesg_size());
-
-    queue_receive(server_clients_queue, (char *) &response, mesg_size(), pid);
+    send_request(&request, &response);
 
     printf("x %d %d\n", request.args[0], request.args[1]);
 }
@@ -157,7 +150,7 @@ int main(int argc, char *argv[]) {
     Mesg msg;
     msg.mesg_type = pid;
 
-    queue_send(control_queue, (char *) &msg, mesg_size());
+    queue_send(control_queue, (char *) &msg);
 
     char buffer[500];
     while (fgets(buffer, sizeof buffer, stdin) != NULL) {
@@ -177,7 +170,7 @@ int main(int argc, char *argv[]) {
     }
 
     msg.op = QUIT;
-    queue_send(clients_server_queue, (char *) &msg, mesg_size());
+    queue_send(clients_server_queue, (char *) &msg);
 
     return 0;
 }

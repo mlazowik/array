@@ -26,14 +26,14 @@ int create_queue(key_t key) {
     return id;
 }
 
-void queue_send(int id, void *msg, size_t msg_size) {
-    if (msgsnd(id, msg, msg_size, 0) != 0) {
+void queue_send(int id, void *msg) {
+    if (msgsnd(id, msg, mesg_size(), 0) != 0) {
         syserr("Cannot send to queue");
     }
 }
 
-void queue_receive(int id, void *msg, size_t msg_size, long type) {
-    if (msgrcv(id, msg, msg_size, type, 0) <= 0) {
+void queue_receive(int id, void *msg, long type) {
+    if (msgrcv(id, msg, mesg_size(), type, 0) <= 0) {
         syserr("Cannot receive from queue");
     }
 }
@@ -53,7 +53,7 @@ void *worker(void *pid) {
     Mesg request, response;
     response.mesg_type = client_pid;
     while (true) {
-        queue_receive(clients_server_queue, &request, mesg_size(), client_pid);
+        queue_receive(clients_server_queue, &request, client_pid);
 
         if (request.op == QUIT) {
             debug("Worker for client with pid %ld quitting.\n", client_pid);
@@ -62,12 +62,12 @@ void *worker(void *pid) {
 
         if (request.op == READ) {
             response.args[0] = array[request.args[0]];
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == WRITE) {
             array[request.args[0]] = request.args[1];
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SUM_GET) {
@@ -75,23 +75,23 @@ void *worker(void *pid) {
             for (i = 1; i < request.args_count; i++) {
                 response.args[i] = array[request.args[i]];
             }
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SUM_SET) {
             array[request.args[0]] = request.args[request.args_count - 1];
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SWAP_GET) {
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SWAP_SET) {
             int tmp = array[request.args[0]];
             array[request.args[0]] = array[request.args[1]];
             array[request.args[1]] = tmp;
-            queue_send(server_clients_queue, (char *) &response, mesg_size());
+            queue_send(server_clients_queue, (char *) &response);
         }
     }
 
@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
 
     Mesg mesg;
     while (true) {
-        queue_receive(control_queue, &mesg, mesg_size(), 0);
+        queue_receive(control_queue, &mesg, 0);
 
         debug("Client with pid %ld connected.\n", mesg.mesg_type);
 
