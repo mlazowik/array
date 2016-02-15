@@ -10,7 +10,25 @@
 #include "err.h"
 #include "mesg.h"
 
-int msg_qid;
+int control_queue, clients_queue;
+
+int get_queue(key_t key) {
+    int id;
+
+    id = msgget(key, 0);
+
+    if (id == -1) {
+        syserr("Cannot get queue");
+    }
+
+    return id;
+}
+
+void queue_send(int id, void *msg, size_t msg_size) {
+    if (msgsnd(id, msg, msg_size, 0) != 0) {
+        syserr("Cannot send to queue");
+    }
+}
 
 int main(int argc, char *argv[]) {
     assert(argc == 2);
@@ -21,18 +39,15 @@ int main(int argc, char *argv[]) {
 
     debug("Hello client! Got %ld.\n", op_time);
 
-    if ((msg_qid = msgget(MKEY, 0)) == -1) {
-        syserr("msgget");
-    }
+    control_queue = get_queue(CONTROL_KEY);
+    clients_queue = get_queue(CLIENTS_KEY);
 
-    debug("My pid is %d.\n", getpid());
+    debug("My pid is %ld.\n", getpid());
 
     Mesg mesg;
     mesg.mesg_type = getpid();
 
-    if (msgsnd(msg_qid, (char *) &mesg, mesg_size(), 0) != 0) {
-        syserr("msgsnd");
-    }
+    queue_send(control_queue, (char *) &mesg, mesg_size());
 
     return 0;
 }

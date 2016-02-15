@@ -8,7 +8,8 @@ typedef struct {
     int ints[MAX_INTS];
 } Mesg;
 
-#define	MKEY	1234L
+#define	CONTROL_KEY	1234L
+#define CLIENTS_KEY 1235L
 
 size_t mesg_size() {
     return sizeof(Mesg) - sizeof(long);

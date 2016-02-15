@@ -7,6 +7,9 @@ extern const bool DEBUG;
 
 extern void debug(const char *fmt, ...);
 
+/* print system call error message and terminate */
+extern void syserr_errno(int err, const char *fmt, ...);
+
 /* wypisuje informacje o blednym zakonczeniu funkcji systemowej
 i konczy dzialanie */
 extern void syserr(const char *fmt, ...);
