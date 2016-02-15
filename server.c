@@ -15,10 +15,23 @@
 
 int control_queue, clients_server_queue, server_clients_queue;
 
+void remove_queue(int id) {
+    if (msgctl(id, IPC_RMID, 0) == -1) {
+        debug("Cannot remove queue");
+    }
+}
+
+void clean() {
+    remove_queue(control_queue);
+    remove_queue(clients_server_queue);
+    remove_queue(server_clients_queue);
+}
+
 int create_queue(key_t key) {
     int id = msgget(key, 0666 | IPC_CREAT | IPC_EXCL);
 
     if (id == -1) {
+        clean();
         syserr("Cannot create queue");
     }
 
@@ -27,19 +40,15 @@ int create_queue(key_t key) {
 
 void queue_send(int id, void *msg) {
     if (msgsnd(id, msg, mesg_size(), 0) != 0) {
+        clean();
         syserr("Cannot send to queue");
     }
 }
 
 void queue_receive(int id, void *msg, long type) {
     if (msgrcv(id, msg, mesg_size(), type, 0) <= 0) {
+        clean();
         syserr("Cannot receive from queue");
-    }
-}
-
-void remove_queue(int id) {
-    if (msgctl(id, IPC_RMID, 0) == -1) {
-        syserr("Cannot remove queue");
     }
 }
 
@@ -93,7 +102,7 @@ void *worker(void *pid) {
             qsort(sorted, request.args_count, sizeof(int), compare);
 
             for (size_t i = 0; i < request.args_count; i++) {
-                if (i > 0 || sorted[i-1] != sorted[i]) {
+                if (i == 0 || sorted[i-1] != sorted[i]) {
                     if (sorted[i] == request.args[0]) {
                         lock_write(sorted[i]);
                     } else {
@@ -121,7 +130,7 @@ void *worker(void *pid) {
             qsort(sorted, request.args_count - 1, sizeof(int), compare);
 
             for (size_t i = 0; i < request.args_count - 1; i++) {
-                if (i > 0 || sorted[i-1] != sorted[i]) {
+                if (i == 0 || sorted[i-1] != sorted[i]) {
                     if (sorted[i] == request.args[0]) {
                         unlock_write(sorted[i]);
                     } else {
@@ -175,21 +184,20 @@ void create_worker(pid_t pid) {
 
     long *pid_ptr;
     if ((pid_ptr = malloc(sizeof(*pid_ptr))) == NULL) {
+        clean();
         fatal("Cannot allocate memory.\n");
     }
 
     *pid_ptr = pid;
 
     if ((err = pthread_create(&thread, NULL, worker, pid_ptr)) != 0) {
+        clean();
         syserr_errno(err, "create");
     }
 }
 
 void exit_server(int sig) {
-    remove_queue(control_queue);
-    remove_queue(clients_server_queue);
-    remove_queue(server_clients_queue);
-
+    clean();
     exit(0);
 }
 
