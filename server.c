@@ -11,10 +11,9 @@
 
 #include "err.h"
 #include "mesg.h"
+#include "array.h"
 
 int control_queue, clients_server_queue, server_clients_queue;
-
-int *array;
 
 int create_queue(key_t key) {
     int id = msgget(key, 0666 | IPC_CREAT | IPC_EXCL);
@@ -44,6 +43,10 @@ void remove_queue(int id) {
     }
 }
 
+int compare(const void *a, const void *b) {
+    return (*(int*)a - *(int*)b);
+}
+
 void *worker(void *pid) {
     long client_pid = *((long *) pid);
     free(pid);
@@ -61,36 +64,104 @@ void *worker(void *pid) {
         }
 
         if (request.op == READ) {
-            response.args[0] = array[request.args[0]];
+            size_t index = request.args[0];
+
+            lock_read(index);
+            response.args[0] = get_value(index);
+            unlock_read(index);
+
             queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == WRITE) {
-            array[request.args[0]] = request.args[1];
+            size_t index = request.args[0];
+
+            lock_write(index);
+            set_value(request.args[0], request.args[1]);
+            unlock_write(index);
+
             queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SUM_GET) {
-            size_t i;
-            for (i = 1; i < request.args_count; i++) {
-                response.args[i] = array[request.args[i]];
+            int sorted[request.args_count];
+
+            for (size_t i = 0; i < request.args_count; i++) {
+                sorted[i] = request.args[i];
             }
+
+            qsort(sorted, request.args_count, sizeof(int), compare);
+
+            for (size_t i = 0; i < request.args_count; i++) {
+                if (i > 0 || sorted[i-1] != sorted[i]) {
+                    if (sorted[i] == request.args[0]) {
+                        lock_write(sorted[i]);
+                    } else {
+                        lock_read(sorted[i]);
+                    }
+                }
+            }
+
+            for (size_t i = 1; i < request.args_count; i++) {
+                response.args[i] = get_value(request.args[i]);
+            }
+
             queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SUM_SET) {
-            array[request.args[0]] = request.args[request.args_count - 1];
+            set_value(request.args[0], request.args[request.args_count - 1]);
+
+            int sorted[request.args_count - 1];
+
+            for (size_t i = 0; i < request.args_count; i++) {
+                sorted[i] = request.args[i];
+            }
+
+            qsort(sorted, request.args_count - 1, sizeof(int), compare);
+
+            for (size_t i = 0; i < request.args_count - 1; i++) {
+                if (i > 0 || sorted[i-1] != sorted[i]) {
+                    if (sorted[i] == request.args[0]) {
+                        unlock_write(sorted[i]);
+                    } else {
+                        unlock_read(sorted[i]);
+                    }
+                }
+            }
+
             queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SWAP_GET) {
+            if (request.args[0] == request.args[1]) {
+                lock_write(request.args[0]);
+            } else if (request.args[0] < request.args[1]) {
+                lock_write(request.args[0]);
+                lock_write(request.args[1]);
+            } else {
+                lock_write(request.args[1]);
+                lock_write(request.args[0]);
+            }
+
             queue_send(server_clients_queue, (char *) &response);
         }
 
         if (request.op == SWAP_SET) {
-            int tmp = array[request.args[0]];
-            array[request.args[0]] = array[request.args[1]];
-            array[request.args[1]] = tmp;
+            int tmp = get_value(request.args[0]);
+            set_value(request.args[0], get_value(request.args[1]));
+            set_value(request.args[1], tmp);
+
+            if (request.args[0] == request.args[1]) {
+                unlock_write(request.args[0]);
+            } else if (request.args[0] < request.args[1]) {
+                unlock_write(request.args[0]);
+                unlock_write(request.args[1]);
+            } else {
+                unlock_write(request.args[1]);
+                unlock_write(request.args[0]);
+            }
+
             queue_send(server_clients_queue, (char *) &response);
         }
     }
@@ -135,9 +206,7 @@ int main(int argc, char *argv[]) {
         syserr("signal");
     }
 
-    if ((array = calloc(n, sizeof(int))) == NULL) {
-        fatal("Cannot allocate memory.\n");
-    }
+    array_init(n);
 
     control_queue = create_queue(CONTROL_KEY);
     clients_server_queue = create_queue(CLIENTS_SERVER_KEY);
